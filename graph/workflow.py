@@ -16,6 +16,7 @@ from agents.correlator import correlator_node
 from agents.hypothesis import hypothesis_node
 from agents.validator import validator_node
 
+MAX_ITERATIONS = 3
 
 # ─────────────────────────────────────────────
 # Routing after evidence assessment
@@ -42,13 +43,19 @@ def route_after_validation(state: IncidentState):
 
     validation = state.get("validation")
 
-    if validation is None:
-        return "planner"
+    print("\n=== VALIDATION ROUTER ===")
+    print("validation:", validation)
 
-    if validation.is_sufficient:
+    if validation is None:
+        print("→ final_report")
         return "final_report"
 
-    return "planner"
+    if validation.is_sufficient:
+        print("→ final_report")
+        return "final_report"
+
+    print("→ final_report (validation failed)")
+    return "final_report"
 
 
 # ─────────────────────────────────────────────
@@ -56,32 +63,31 @@ def route_after_validation(state: IncidentState):
 # ─────────────────────────────────────────────
 
 def final_report_node(state: IncidentState):
+    hypotheses = state.get("hypotheses", [])
+    hypothesis = hypotheses[-1] if hypotheses else None
 
-    hypothesis = None
+    validation = state.get("validation")
 
-    hypotheses = state.get(
-        "hypotheses",
-        [],
-    )
-
-    if hypotheses:
-        hypothesis = hypotheses[-1]
-
-    validation = state.get(
-        "validation"
-    )
+    if validation and validation.is_sufficient:
+        status = "completed"
+        heading = "Root cause investigation completed."
+    else:
+        status = "inconclusive"
+        heading = "Root cause investigation reached the maximum iteration limit without sufficient validation."
 
     return {
         "final_report": (
-            "Root cause investigation completed.\n\n"
+            f"{heading}\n\n"
             f"Root cause hypothesis:\n"
             f"{hypothesis.cause if hypothesis else 'N/A'}\n\n"
             f"Confidence:\n"
             f"{hypothesis.confidence if hypothesis else 'N/A'}\n\n"
             f"Validation:\n"
-            f"{validation.reasoning if validation else 'N/A'}"
+            f"{validation.reasoning if validation else 'N/A'}\n\n"
+            f"Missing evidence:\n"
+            f"{', '.join(validation.missing_evidence) if validation else 'N/A'}"
         ),
-        "status": "completed",
+        "status": status,
     }
 
 

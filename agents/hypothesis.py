@@ -11,7 +11,7 @@ from schemas.hypothesis import Hypothesis
 
 
 llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
+    model="openai/gpt-oss-120b",
     temperature=0,
 )
 
@@ -19,40 +19,31 @@ llm = ChatGroq(
 HYPOTHESIS_PROMPT = """
 You are the Root Cause Hypothesis Agent for RootNexus.
 
-Your job is to generate a root-cause hypothesis for the
-production incident using the available investigation evidence.
+Return ONLY a JSON object with EXACTLY these top-level fields:
+
+{
+    "cause": "string",
+    "supporting_evidence": ["string"],
+    "contradicting_evidence": ["string"],
+    "confidence": 0.0
+}
+
+Do NOT put these fields inside another object such as
+"properties".
+
+Do NOT return "description" or "properties".
 
 Use ONLY the evidence provided.
 
-Do not invent:
-- logs
-- metrics
-- deployments
-- database behavior
-- configuration changes
-- timestamps
-- system events
+Do not invent logs, metrics, deployments, database behavior,
+configuration changes, timestamps, or system events.
 
-The hypothesis must explain as many of the observed symptoms
-as possible.
-
-Identify:
-
-1. The most likely root cause.
-2. Evidence supporting the cause.
-3. Evidence contradicting the cause.
-4. Confidence between 0 and 1.
+The hypothesis must explain as many observed symptoms as possible.
 
 Do not treat a symptom as the root cause.
 
-For example:
-"Payment requests are timing out" is a symptom.
-
-A possible root cause would be:
-"Database connection exhaustion is causing request processing
-to block until the API timeout."
-
-Return a structured Hypothesis object.
+Incident:
+...
 """
 
 
@@ -93,7 +84,8 @@ Evidence assessment:
 """
 
     structured_llm = llm.with_structured_output(
-        Hypothesis
+        Hypothesis,
+        method="json_mode",
     )
 
     hypothesis = structured_llm.invoke(

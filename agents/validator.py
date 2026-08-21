@@ -11,99 +11,74 @@ from schemas.validation import ValidationResult
 
 
 llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
+    model="openai/gpt-oss-120b",
     temperature=0,
+    reasoning_effort="low",
 )
 
 
 VALIDATOR_PROMPT = """
 You are the Hypothesis Validator for RootNexus.
 
-Your job is to determine whether the current root-cause
-hypothesis is sufficiently supported by the available evidence.
+Determine whether the current root-cause hypothesis is sufficiently
+supported by the available evidence.
 
-Evaluate:
+Rules:
 
-- the incident
-- the generated hypothesis
-- investigator findings
-- correlations
-- evidence assessment
+1. Do NOT invent evidence.
+2. Do NOT assume missing information.
+3. Set is_sufficient=true only when the evidence strongly supports
+   the hypothesis.
+4. If important evidence is missing, set is_sufficient=false.
+5. If is_sufficient=false, missing_evidence MUST contain the specific
+   missing evidence required.
+6. If is_sufficient=true, missing_evidence MUST be an empty list.
+7. confidence MUST be a JSON NUMBER between 0 and 1.
+8. Use decimal notation for confidence, for example 0.9 or 0.95.
+9. NEVER write numbers as words.
+10. Return ONLY a valid ValidationResult matching the provided schema.
 
-A hypothesis should only be considered sufficient when the
-available evidence provides strong and consistent support for it.
+The output must contain:
 
-Do NOT assume missing information.
-
-Do NOT invent evidence.
-
-If important evidence is missing, set:
-
-is_sufficient = false
-
-and explicitly list what evidence is required in:
-
-missing_evidence
-
-If the hypothesis is sufficiently supported, set:
-
-is_sufficient = true
-
-and leave missing_evidence empty.
-
-Your confidence must be between 0 and 1.
-
-Return a structured ValidationResult.
+{
+    "is_sufficient": true,
+    "confidence": 0.95,
+    "reasoning": "...",
+    "missing_evidence": []
+}
 """
 
 
 def validator_node(state: IncidentState) -> dict:
 
     incident = state.get("incident")
+    hypotheses = state.get("hypotheses", [])
+    correlations = state.get("correlations", [])
+    evidence_assessment = state.get("evidence_assessment")
 
-    hypotheses = state.get(
-        "hypotheses",
-        [],
-    )
-
-    findings = state.get(
-        "agent_findings",
-        [],
-    )
-
-    correlations = state.get(
-        "correlations",
-        [],
-    )
-
-    evidence_assessment = state.get(
-        "evidence_assessment"
+    latest_hypothesis = (
+        hypotheses[-1]
+        if hypotheses
+        else None
     )
 
     prompt = f"""
 Incident:
+{incident.description if incident else "Unknown"}
 
-{incident}
-
-Current hypotheses:
-
-{hypotheses}
-
-Investigator findings:
-
-{findings}
-
-Correlations:
-
-{correlations}
+Current hypothesis:
+{latest_hypothesis}
 
 Evidence assessment:
-
 {evidence_assessment}
+
+Key correlations:
+{correlations[-3:]}
 """
 
     structured_llm = llm.with_structured_output(
-        ValidationResult
+        ValidationResult,
+        method="function_calling",
     )
 
     validation = structured_llm.invoke(

@@ -18,28 +18,27 @@ llm = ChatGroq(
 DEPLOYMENT_INVESTIGATOR_PROMPT = """
 You are the Deployment Investigator for RootNexus.
 
-Analyze ONLY the provided deployment information.
+Analyze deployment evidence and determine whether a recent deployment
+could be related to the incident.
 
-Look for:
-- recent deployments
-- deployment timestamps
-- version changes
-- configuration changes
-- rollbacks
-- deployments occurring close to the incident
-- relationships between deployment timing and incident timing
+Do not invent evidence.
 
-Do not assume that a deployment caused the incident merely because
-it occurred before the incident.
+You MUST return an AgentFinding object with ALL four required fields:
 
-Identify temporal relationships and provide evidence that can later
-be used by the Correlator.
+1. agent
+2. summary
+3. evidence
+4. confidence
 
-Do not invent deployment information.
+The `summary` field is REQUIRED and must contain a concise explanation
+of your finding.
 
-Return your result as a structured AgentFinding.
+The `evidence` field must contain only evidence present in the input.
+
+The `confidence` field must be a number between 0 and 1.
+
+Return ONLY the structured AgentFinding object.
 """
-
 
 def deployment_investigator_node(
     state: IncidentState,

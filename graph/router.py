@@ -1,5 +1,4 @@
 from langgraph.types import Send
-
 from graph.state import IncidentState
 
 
@@ -12,20 +11,20 @@ TASK_TO_NODE = {
 }
 
 
-def investigation_router(
-    state: IncidentState,
-) -> list[Send]:
+def investigation_router(state: IncidentState) -> list[Send]:
 
-    tasks = state.get(
-        "investigation_plan",
-        []
-    )
+    tasks = state.get("investigation_plan", [])
+    completed = set(state.get("completed_tasks", []))
 
     routes = []
 
     for task in tasks:
 
         target = task.target.lower().strip()
+
+        # Skip already completed tasks
+        if target in completed:
+            continue
 
         node = TASK_TO_NODE.get(target)
 

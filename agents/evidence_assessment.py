@@ -11,7 +11,7 @@ from schemas.evidence import EvidenceAssessment
 
 
 llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
+    model="openai/gpt-oss-120b",
     temperature=0,
 )
 

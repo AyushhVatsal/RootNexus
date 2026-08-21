@@ -2,14 +2,16 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
+
 from graph.state import IncidentState
-from schemas.task import InvestigationTask
 from schemas.task import InvestigationPlan
 
+
 llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
+    model="openai/gpt-oss-120b",
     temperature=0,
 )
 
@@ -21,11 +23,10 @@ Your job is to determine what should be investigated next
 for a production incident.
 
 Use:
-
 - the incident
 - previous agent findings
 - evidence assessment
-- current hypotheses
+- current hypothesis
 - validation result
 - missing evidence
 - investigation history
@@ -45,19 +46,27 @@ been performed.
 Only repeat an investigation when the missing evidence
 actually requires additional investigation of that source.
 
-Possible investigation targets:
-
-- logs
-- metrics
-- deployment
-- database
-- configuration
+The target field MUST be exactly one of:
+logs
+metrics
+deployment
+database
+configuration
 
 Each task must explain WHY that evidence is needed.
 
-Return only an InvestigationPlan.
-"""
+Return an InvestigationPlan.
 
+The InvestigationPlan MUST contain a top-level "tasks" field.
+
+Each task MUST contain:
+- target
+- reason
+- priority
+
+Do NOT return "description", "properties", or any other
+wrapper around "tasks".
+"""
 
 def planner_node(state: IncidentState):
 
@@ -86,38 +95,132 @@ def planner_node(state: IncidentState):
         [],
     )
 
+    # -----------------------------------------
+    # Compact incident
+    # -----------------------------------------
+
+    incident_context = None
+
+    if incident:
+
+        incident_context = {
+            "incident_id": incident.incident_id,
+            "service": incident.service,
+            "description": incident.description,
+            "started_at": incident.started_at.isoformat(),
+        }
+
+    # -----------------------------------------
+    # Compact findings
+    # -----------------------------------------
+
+    findings_context = [
+        {
+            "agent": finding.agent,
+            "summary": finding.summary,
+            "confidence": finding.confidence,
+        }
+        for finding in findings
+    ]
+
+    # -----------------------------------------
+    # Compact evidence assessment
+    # -----------------------------------------
+
+    evidence_context = None
+
+    if evidence_assessment:
+
+        evidence_context = {
+            "sufficient": evidence_assessment.sufficient,
+            "reasoning": evidence_assessment.reasoning,
+            "missing_evidence": (
+                evidence_assessment.missing_evidence
+            ),
+        }
+
+    # -----------------------------------------
+    # Compact current hypothesis
+    # -----------------------------------------
+
+    hypothesis_context = None
+
+    if hypotheses:
+
+        hypothesis = hypotheses[-1]
+
+        hypothesis_context = {
+            "cause": hypothesis.cause,
+            "confidence": hypothesis.confidence,
+            "supporting_evidence": (
+                hypothesis.supporting_evidence
+            ),
+            "contradicting_evidence": (
+                hypothesis.contradicting_evidence
+            ),
+        }
+
+    # -----------------------------------------
+    # Compact validation
+    # -----------------------------------------
+
+    validation_context = None
+
+    if validation:
+
+        validation_context = {
+            "is_sufficient": validation.is_sufficient,
+            "confidence": validation.confidence,
+            "reasoning": validation.reasoning,
+            "missing_evidence": (
+                validation.missing_evidence
+            ),
+        }
+
+    # -----------------------------------------
+    # Compact investigation history
+    # -----------------------------------------
+
+    history_context = [
+        {
+            "iteration": item.get("iteration"),
+            "tasks": item.get("tasks", []),
+            "result": item.get("result"),
+        }
+        for item in history
+    ]
+
+    # -----------------------------------------
+    # Planner input
+    # -----------------------------------------
+
     prompt = f"""
 Incident:
-
-{incident}
+{incident_context}
 
 Previous findings:
-
-{findings}
+{findings_context}
 
 Evidence assessment:
+{evidence_context}
 
-{evidence_assessment}
-
-Current hypotheses:
-
-{hypotheses}
+Current hypothesis:
+{hypothesis_context}
 
 Validation result:
-
-{validation}
-
-Missing evidence from validation:
-
-{validation.missing_evidence if validation else []}
+{validation_context}
 
 Investigation history:
-
-{history}
+{history_context}
 """
 
+    # -----------------------------------------
+    # Structured output
+    # -----------------------------------------
+
     structured_llm = llm.with_structured_output(
-        InvestigationPlan
+        InvestigationPlan,
+        method="json_schema",
     )
 
     plan = structured_llm.invoke(

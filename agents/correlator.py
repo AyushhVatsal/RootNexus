@@ -9,7 +9,7 @@ from schemas.evidence import EvidenceAssessment
 
 
 llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
+    model="openai/gpt-oss-120b",
     temperature=0,
 )
 
@@ -84,9 +84,46 @@ Investigation findings:
         assessment.reasoning
     ]
 
+    history = state.get(
+        "investigation_history",
+        []
+    )
+
+    iteration = state.get(
+        "iteration",
+        0
+    )
+
+    investigation_plan = state.get(
+        "investigation_plan",
+        []
+    )
+
+    history_entry = {
+        "iteration": iteration,
+        "tasks": [
+            {
+                "target": task.target,
+                "reason": task.reason,
+                "priority": task.priority,
+            }
+            for task in investigation_plan
+        ],
+        "result": (
+            "Investigation completed and "
+            "findings correlated."
+        ),
+    }
+
     return {
         "evidence_assessment": assessment,
+
         "correlations": correlations,
+
+        "investigation_history": [
+            history_entry
+        ],
+
         "status": (
             "evidence_sufficient"
             if assessment.sufficient

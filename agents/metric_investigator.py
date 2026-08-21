@@ -62,7 +62,8 @@ def metric_investigator_node(
     """
 
     structured_llm = llm.with_structured_output(
-        AgentFinding
+        AgentFinding,
+        method="json_schema",
     )
 
     finding = structured_llm.invoke(
@@ -76,7 +77,7 @@ def metric_investigator_node(
         ]
     )
 
-    finding.agent = "metrics_investigator"
+    finding.agent = "metric_investigator"
 
     return {
         "agent_findings": [finding],

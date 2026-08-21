@@ -37,6 +37,12 @@ def append_correlations(
 ) -> list[str]:
     return existing + new
 
+def append_completed_tasks(
+    existing: list[str],
+    new: list[str],
+) -> list[str]:
+    return list(dict.fromkeys(existing + new))
+
 
 class IncidentState(TypedDict, total=False):
 
@@ -123,5 +129,5 @@ class IncidentState(TypedDict, total=False):
     
     completed_tasks: Annotated[
         list[str],
-        lambda existing, new: existing + new,
+        append_completed_tasks,
     ]

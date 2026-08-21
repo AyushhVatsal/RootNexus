@@ -1,8 +1,16 @@
+from typing import Literal
 from pydantic import BaseModel
 
+InvestigationTarget = Literal[
+    "logs",
+    "metrics",
+    "deployment",
+    "database",
+    "configuration",
+]
 
 class InvestigationTask(BaseModel):
-    target: str
+    target: InvestigationTarget
     reason: str
     priority: str
 
