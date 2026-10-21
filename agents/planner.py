@@ -1,19 +1,15 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from graph.state import IncidentState
 from schemas.task import InvestigationPlan
+from utils.llm import lazy_llm
 
 
-llm = ChatGroq(
+llm = lazy_llm(
+    "planner",
     model="openai/gpt-oss-120b",
-    temperature=0,
 )
+
 
 
 PLANNER_PROMPT = """
@@ -94,6 +90,8 @@ def planner_node(state: IncidentState):
         "investigation_history",
         [],
     )
+
+    completed_tasks = state.get("completed_tasks", [])
 
     # -----------------------------------------
     # Compact incident
@@ -190,29 +188,42 @@ def planner_node(state: IncidentState):
         for item in history
     ]
 
+    completed_context = list(dict.fromkeys(completed_tasks))
+
     # -----------------------------------------
     # Planner input
     # -----------------------------------------
 
+
     prompt = f"""
-Incident:
-{incident_context}
+    Incident:
+    {incident_context}
 
-Previous findings:
-{findings_context}
+    Previous findings:
+    {findings_context}
 
-Evidence assessment:
-{evidence_context}
+    Evidence assessment:
+    {evidence_context}
 
-Current hypothesis:
-{hypothesis_context}
+    Current hypothesis:
+    {hypothesis_context}
 
-Validation result:
-{validation_context}
+    Validation result:
+    {validation_context}
 
-Investigation history:
-{history_context}
-"""
+    Investigation history:
+    {history_context}
+
+    Completed investigation targets:
+    {completed_context}
+
+    Planning requirements:
+    - Prioritize the specific missing evidence identified by the validator.
+    - Do not repeat a completed target unless existing findings show that
+    it can provide genuinely new information.
+    - Prefer another evidence source when it can address the same gap.
+    - Do not claim that missing evidence was collected if it is unavailable.
+    """
 
     # -----------------------------------------
     # Structured output

@@ -4,6 +4,7 @@ from graph.workflow import build_graph
 from schemas.incident import Incident
 from schemas.validation import ValidationResult
 from schemas.hypothesis import Hypothesis
+from utils.llm_budget import LLMBudget
 
 graph = build_graph()
 
@@ -89,12 +90,18 @@ initial_state = {
     "investigation_history": [],
 
     "iteration": 1,
-    "status": "validated",
+    "status": "investigating",
     "completed_tasks": [],
 }
 
+budget = LLMBudget()
 
-result = graph.invoke(initial_state)
+result = graph.invoke(
+    initial_state,
+    config={"configurable": {"llm_budget": budget}},
+)
+
+print(f"LLM calls used: {budget.calls}/{budget.max_calls}")
 
 import json
 

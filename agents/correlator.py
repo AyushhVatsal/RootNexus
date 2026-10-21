@@ -1,59 +1,32 @@
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
-from dotenv import load_dotenv
-import os
-load_dotenv()
 
 from graph.state import IncidentState
-from schemas.evidence import EvidenceAssessment
+from schemas.correlation import CorrelationResult
+from utils.llm import lazy_llm
 
-
-llm = ChatGroq(
-    model="openai/gpt-oss-120b",
-    temperature=0,
-)
-
+llm = lazy_llm("correlator")
 
 CORRELATOR_PROMPT = """
 You are the Correlator for RootNexus.
 
-You receive findings produced by multiple incident investigation
-agents.
-
-Your job is to correlate the findings and determine whether the
-available evidence is sufficient to begin root-cause hypothesis
-generation.
+Identify relationships across findings from different evidence sources.
 
 Analyze:
+1. Temporal relationships between events.
+2. Agreements and contradictions across sources.
+3. Relationships between deployments, logs, metrics, and symptoms.
+4. Evidence-supported patterns that may help explain the incident.
 
-1. Coverage
-   Do the findings cover the important aspects of the incident?
-
-2. Consistency
-   Do the different evidence sources support or contradict each
-   other?
-
-3. Temporal correlation
-   Did important changes occur around the incident timeline?
-
-4. Causal support
-   Is there evidence that could plausibly explain the incident?
-
-Do NOT declare a root cause.
-
-Do NOT invent evidence.
-
-The purpose of this step is only to determine whether there is
-enough evidence to proceed to hypothesis generation.
-
-Return a structured EvidenceAssessment.
+Do not declare a root cause.
+Do not judge whether evidence is sufficient.
+Do not invent evidence.
+Return only concrete, evidence-supported correlations.
+If no meaningful correlations exist, return an empty list.
 """
 
 
-def correlator_node(
-    state: IncidentState,
-) -> dict:
-
+def correlator_node(state: IncidentState) -> dict:
     incident = state.get("incident")
     findings = state.get("agent_findings", [])
 
@@ -65,39 +38,17 @@ Investigation findings:
 {findings}
 """
 
-    structured_llm = llm.with_structured_output(
-        EvidenceAssessment
-    )
+    structured_llm = llm.with_structured_output(CorrelationResult)
 
-    assessment = structured_llm.invoke(
+    result = structured_llm.invoke(
         [
-            SystemMessage(
-                content=CORRELATOR_PROMPT
-            ),
-            HumanMessage(
-                content=prompt
-            ),
+            SystemMessage(content=CORRELATOR_PROMPT),
+            HumanMessage(content=prompt),
         ]
     )
 
-    correlations = [
-        assessment.reasoning
-    ]
-
-    history = state.get(
-        "investigation_history",
-        []
-    )
-
-    iteration = state.get(
-        "iteration",
-        0
-    )
-
-    investigation_plan = state.get(
-        "investigation_plan",
-        []
-    )
+    iteration = state.get("iteration", 0)
+    investigation_plan = state.get("investigation_plan", [])
 
     history_entry = {
         "iteration": iteration,
@@ -109,24 +60,11 @@ Investigation findings:
             }
             for task in investigation_plan
         ],
-        "result": (
-            "Investigation completed and "
-            "findings correlated."
-        ),
+        "result": "Cross-source evidence correlations generated.",
     }
 
     return {
-        "evidence_assessment": assessment,
-
-        "correlations": correlations,
-
-        "investigation_history": [
-            history_entry
-        ],
-
-        "status": (
-            "evidence_sufficient"
-            if assessment.sufficient
-            else "evidence_insufficient"
-        ),
+        "correlations": result.correlations,
+        "investigation_history": [history_entry],
+        "status": "correlations_generated",
     }

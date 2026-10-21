@@ -1,18 +1,12 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from graph.state import IncidentState
 from schemas.evidence import EvidenceAssessment
+from utils.llm import lazy_llm
 
-
-llm = ChatGroq(
+llm = lazy_llm(
+    "evidence_assessment",
     model="openai/gpt-oss-120b",
-    temperature=0,
 )
 
 

@@ -1,19 +1,10 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from graph.state import IncidentState
 from schemas.finding import AgentFinding
+from utils.llm import lazy_llm
 
-
-llm = ChatGroq(
-    model=os.getenv("GROQ_MODEL"),
-    temperature=0,
-)
-
+llm = lazy_llm("metric_investigator")
 
 METRICS_INVESTIGATOR_PROMPT = """
 You are the Metrics Investigator for RootNexus.

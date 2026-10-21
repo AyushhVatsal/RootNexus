@@ -1,3 +1,5 @@
+import logging
+
 from langgraph.graph import END, START, StateGraph
 
 from graph.state import IncidentState
@@ -15,78 +17,108 @@ from agents.evidence_assessment import evidence_assessment_node
 from agents.correlator import correlator_node
 from agents.hypothesis import hypothesis_node
 from agents.validator import validator_node
+from utils.llm_budget import with_invocation_budget
 
 MAX_ITERATIONS = 3
 
-# ─────────────────────────────────────────────
-# Routing after evidence assessment
-# ─────────────────────────────────────────────
+logger = logging.getLogger("rootnexus.workflow")
 
 def route_after_evidence(state: IncidentState):
-
     assessment = state.get("evidence_assessment")
+    iteration = state.get("iteration", 0)
 
-    if assessment is None:
-        return "planner"
+    if assessment is not None and assessment.sufficient:
+        return "hypothesis"
 
-    if assessment.sufficient:
+    if iteration >= MAX_ITERATIONS:
+        logger.info(
+            "Evidence insufficient at iteration cap; "
+            "proceeding with best-effort hypothesis."
+        )
         return "hypothesis"
 
     return "planner"
 
 
-# ─────────────────────────────────────────────
-# Routing after validation
-# ─────────────────────────────────────────────
-
 def route_after_validation(state: IncidentState):
-
     validation = state.get("validation")
+    iteration = state.get("iteration", 0)
 
-    print("\n=== VALIDATION ROUTER ===")
-    print("validation:", validation)
-
-    if validation is None:
-        print("→ final_report")
+    if validation is not None and validation.is_sufficient:
         return "final_report"
 
-    if validation.is_sufficient:
-        print("→ final_report")
+    if iteration >= MAX_ITERATIONS:
+        logger.info(
+            "Validation unsuccessful at iteration cap; "
+            "producing inconclusive report."
+        )
         return "final_report"
 
-    print("→ final_report (validation failed)")
-    return "final_report"
-
+    return "planner"
 
 # ─────────────────────────────────────────────
 # Final report
 # ─────────────────────────────────────────────
 
+def _stop_reason(state: IncidentState) -> str:
+    validation = state.get("validation")
+    iteration = state.get("iteration", 0)
+
+    if validation and validation.is_sufficient:
+        return "Hypothesis validated with sufficient evidence."
+    if not state.get("hypotheses"):
+        return (
+            f"Evidence was still insufficient after {iteration} "
+            f"investigation round(s); no hypothesis was generated."
+        )
+    if iteration >= MAX_ITERATIONS:
+        return (
+            f"Reached the maximum of {MAX_ITERATIONS} investigation rounds "
+            f"without a validated hypothesis."
+        )
+    return "The planner produced no actionable follow-up tasks."
+
+
 def final_report_node(state: IncidentState):
     hypotheses = state.get("hypotheses", [])
     hypothesis = hypotheses[-1] if hypotheses else None
-
     validation = state.get("validation")
 
-    if validation and validation.is_sufficient:
-        status = "completed"
-        heading = "Root cause investigation completed."
+    completed = bool(validation and validation.is_sufficient)
+    status = "completed" if completed else "inconclusive"
+    heading = (
+        "Root cause investigation completed."
+        if completed
+        else "Root cause investigation inconclusive."
+    )
+    reason = _stop_reason(state)
+
+    # The validator's confidence is the calibrated one; the hypothesis agent's
+    # own confidence is self-reported and shown only for reference.
+    if validation:
+        confidence = f"{validation.confidence:.2f} (validator)"
+    elif hypothesis:
+        confidence = f"{hypothesis.confidence:.2f} (hypothesis agent, unvalidated)"
     else:
-        status = "inconclusive"
-        heading = "Root cause investigation reached the maximum iteration limit without sufficient validation."
+        confidence = "N/A"
+
+    missing = validation.missing_evidence if validation else []
+
+    report = (
+        f"{heading}\n"
+        f"Reason: {reason}\n\n"
+        f"Root cause hypothesis:\n"
+        f"{hypothesis.cause if hypothesis else 'N/A'}\n\n"
+        f"Confidence:\n{confidence}\n\n"
+        f"Validation:\n{validation.reasoning if validation else 'N/A'}\n\n"
+        f"Missing evidence:\n"
+        f"{', '.join(missing) if missing else 'None'}\n\n"
+        f"Investigation rounds: {state.get('iteration', 0)}"
+    )
 
     return {
-        "final_report": (
-            f"{heading}\n\n"
-            f"Root cause hypothesis:\n"
-            f"{hypothesis.cause if hypothesis else 'N/A'}\n\n"
-            f"Confidence:\n"
-            f"{hypothesis.confidence if hypothesis else 'N/A'}\n\n"
-            f"Validation:\n"
-            f"{validation.reasoning if validation else 'N/A'}\n\n"
-            f"Missing evidence:\n"
-            f"{', '.join(validation.missing_evidence) if validation else 'N/A'}"
-        ),
+        "final_report": report,
+        "stop_reason": reason,
         "status": status,
     }
 
@@ -105,52 +137,52 @@ def build_graph():
 
     graph.add_node(
         "planner",
-        planner_node,
+        with_invocation_budget(planner_node),
     )
 
     graph.add_node(
         "log_investigator",
-        log_investigator_node,
+        with_invocation_budget(log_investigator_node),
     )
 
     graph.add_node(
         "metric_investigator",
-        metric_investigator_node,
+        with_invocation_budget(metric_investigator_node),
     )
 
     graph.add_node(
         "deployment_investigator",
-        deployment_investigator_node,
+        with_invocation_budget(deployment_investigator_node),
     )
 
     graph.add_node(
         "database_investigator",
-        database_investigator_node,
+        with_invocation_budget(database_investigator_node),
     )
 
     graph.add_node(
         "configuration_investigator",
-        configuration_investigator_node,
+        with_invocation_budget(configuration_investigator_node),
     )
 
     graph.add_node(
         "correlator",
-        correlator_node,
+        with_invocation_budget(correlator_node),
     )
 
     graph.add_node(
         "evidence_assessment",
-        evidence_assessment_node,
+        with_invocation_budget(evidence_assessment_node),
     )
 
     graph.add_node(
         "hypothesis",
-        hypothesis_node,
+        with_invocation_budget(hypothesis_node),
     )
 
     graph.add_node(
         "validator",
-        validator_node,
+        with_invocation_budget(validator_node),
     )
 
     graph.add_node(

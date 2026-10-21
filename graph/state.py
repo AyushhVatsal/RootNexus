@@ -124,6 +124,7 @@ class IncidentState(TypedDict, total=False):
     # ─────────────────────────────
 
     final_report: str
+    stop_reason: str
 
     selected_tasks: list[InvestigationTask]
     

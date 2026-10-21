@@ -1,18 +1,12 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from graph.state import IncidentState
 from schemas.hypothesis import Hypothesis
+from utils.llm import lazy_llm
 
-
-llm = ChatGroq(
+llm = lazy_llm(
+    "hypothesis",
     model="openai/gpt-oss-120b",
-    temperature=0,
 )
 
 
@@ -47,55 +41,56 @@ Incident:
 """
 
 
+
 def hypothesis_node(state: IncidentState) -> dict:
-
     incident = state.get("incident")
+    logs = state.get("logs", "")
+    metrics = state.get("metrics", {})
+    deployments = state.get("deployments", [])
+    other_evidence = state.get("other_evidence", {})
 
-    findings = state.get(
-        "agent_findings",
-        [],
-    )
-
-    correlations = state.get(
-        "correlations",
-        [],
-    )
-
-    evidence_assessment = state.get(
-        "evidence_assessment"
-    )
+    previous_hypotheses = state.get("hypotheses", [])
+    validation = state.get("validation")
+    investigation_history = state.get("investigation_history", [])
 
     prompt = f"""
 Incident:
-
 {incident}
 
-Agent findings:
+Raw logs:
+{logs}
 
-{findings}
+Raw metrics:
+{metrics}
 
-Correlations:
+Deployments:
+{deployments}
 
-{correlations}
+Other evidence:
+{other_evidence}
 
-Evidence assessment:
+Previous hypotheses:
+{previous_hypotheses}
 
-{evidence_assessment}
+Latest validator feedback:
+{validation}
+
+Investigation history:
+{investigation_history}
+
+Revise or improve the hypothesis using the available evidence and feedback.
+Do not simply repeat a rejected hypothesis.
+Treat high latency and resource exhaustion as symptoms unless evidence
+supports them as the underlying root cause.
+Do not invent facts or claim that a hypothesis is validated without evidence.
 """
 
-    structured_llm = llm.with_structured_output(
-        Hypothesis,
-        method="json_mode",
-    )
+    structured_llm = llm.with_structured_output(Hypothesis)
 
     hypothesis = structured_llm.invoke(
         [
-            SystemMessage(
-                content=HYPOTHESIS_PROMPT
-            ),
-            HumanMessage(
-                content=prompt
-            ),
+            SystemMessage(content=HYPOTHESIS_PROMPT),
+            HumanMessage(content=prompt),
         ]
     )
 
